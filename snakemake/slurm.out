@@ -1,0 +1,59 @@
+
+NEW SNAKEMAKE EXECUTION :)
+Job Details
+Job ID: 2514782
+Start Time: Thu Jun  6 11:11:58 CDT 2024
+Loading conda...
+
+/hpc/software/mamba/23.1.0/condabin/mamba
+/home/mmf8608/.conda/envs/snakemake/bin/snakemake
+Starting snakemake on cluster...
+Using profile simple for setting default command line arguments.
+Building DAG of jobs...
+Your conda installation is not configured to use strict channel priorities. This is however crucial for having robust and correct environments (for details, see https://conda-forge.org/docs/user/tipsandtricks.html). Please consider to configure strict priorities by executing 'conda config --set channel_priority strict'.
+Using shell: /usr/bin/bash
+Provided remote nodes: 15
+Job stats:
+job              count
+-------------  -------
+all                  1
+diamond_denit        1
+total                2
+
+Select jobs to execute...
+Execute 1 jobs...
+
+[Thu Jun  6 11:12:58 2024]
+rule diamond_denit:
+    input: results/pyrodigal/cds_proteins.faa
+    output: results/diamond_contigs/uniref100_denit.tsv
+    jobid: 10
+    reason: Missing output files: results/diamond_contigs/uniref100_denit.tsv
+    threads: 10
+    resources: mem_mb=47684, mem_mib=2725, disk_mb=2857, disk_mib=2725, tmpdir=<TBD>, account=b1042, partition=genomicsguest, nodes=1, threads=1, mem=50G, time=02:00:00
+
+
+        diamond blastp -d /projects/p31629/resources/uniref100_denit -q results/pyrodigal/cds_proteins.faa -o results/diamond_contigs/uniref100_denit.tsv         --very-sensitive --iterate --verbose --threads 10 
+        
+Submitted job 10 with external jobid 'Submitted batch job 2514993'.
+[Thu Jun  6 11:24:39 2024]
+Finished job 10.
+1 of 2 steps (50%) done
+Select jobs to execute...
+Execute 1 jobs...
+
+[Thu Jun  6 11:24:39 2024]
+localrule all:
+    input: results/pyrodigal/cds_proteins.faa, results/pyrodigal/cds.gff, results/diamond_contigs/uniref100_denit.tsv
+    jobid: 0
+    reason: Input files updated by another job: results/diamond_contigs/uniref100_denit.tsv
+    resources: mem_mb=954, mem_mib=6803, disk_mb=7133, disk_mib=6803, tmpdir=/tmp, account=b1042, partition=genomicsguest, nodes=1, threads=1, mem=1gb, time=01:00:00
+
+[Thu Jun  6 11:24:39 2024]
+Finished job 0.
+2 of 2 steps (100%) done
+Complete log: .snakemake/log/2024-06-06T111252.015239.snakemake.log
+
+ENDING SNAKEMAKE EXECUTION
+Bye-bye :)
+

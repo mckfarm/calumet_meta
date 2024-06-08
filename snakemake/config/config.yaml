@@ -1,0 +1,9 @@
+### sample sheet ###
+sample_sheet: "config/sample_sheet.csv"
+
+
+### modules ###
+readqc: FALSE
+assembly: FALSE
+binning: TRUE
+contiganalysis: TRUE
