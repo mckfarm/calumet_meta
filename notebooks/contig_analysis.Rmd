@@ -1,0 +1,31 @@
+```{r}
+library(tidyverse)
+library(data.table)
+library(dtplyr)
+```
+
+```{r}
+ref <- fread("/projects/b1052/mckenna/resources/diamond/denit_uniprotkb.tsv", sep = "\t")
+
+colnames(ref) <- c("entry", "entry_name", "protein_names", "gene_names", "organism", "length", "reviewed")
+
+df <- fread("./results/diamond_contigs/uniref90_denit.tsv", col.names = c("qseqid", "sseqid", "pident", "length", "mismatch",
+                                                                          "gapopen", "qstart", "qend", "sstart", "send",
+                                                                          "evalue", "bitscore")) %>%
+  separate_wider_delim("sseqid", "|", names = c("tr", "entry", "entry_name")) %>%
+  select(-tr) %>%
+  filter(pident >= 70)
+
+```
+
+```{r}
+
+count_table <- df %>%
+  count(entry) %>%
+  left_join(ref, by = "entry")
+
+count_table %>%
+  filter(str_detect(organism, "(?i)accumulibacter|competibacter"))
+
+```
+
