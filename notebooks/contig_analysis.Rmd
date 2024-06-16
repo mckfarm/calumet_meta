@@ -1,31 +1,121 @@
+Packages
+
 ```{r}
 library(tidyverse)
 library(data.table)
 library(dtplyr)
 ```
 
+
+Sample data frame
+```{r}
+sample_dates <- data.frame(sample = c("CAL_S2", "CAL1", "CAL2", "CAL3"),
+                           date = c(ymd("2021-11-15"), ymd("2021-08-16"), ymd("2021-09-21"), ymd("2021-10-26")),
+                           phase = c("IV", "II", "III", "III"))
+
+# get_filenames <- function(samples){
+#   name <- paste0("./results/pileup/", samples, "/", samples, ".rpkm.txt")
+#   return(name)
+# }
+# 
+# depth_files <- lapply(sample_dates$sample, get_filenames)
+
+```
+
+Reference file and annotations
 ```{r}
 ref <- fread("/projects/b1052/mckenna/resources/diamond/denit_uniprotkb.tsv", sep = "\t")
-
-colnames(ref) <- c("entry", "entry_name", "protein_names", "gene_names", "organism", "length", "reviewed")
+colnames(ref) <- c("entry", "entry_name", "protein_names", "gene_names", "organism", "gene_length", "reviewed")
+ref <- ref %>%
+  select(-reviewed)
 
 df <- fread("./results/diamond_contigs/uniref90_denit.tsv", col.names = c("qseqid", "sseqid", "pident", "length", "mismatch",
                                                                           "gapopen", "qstart", "qend", "sstart", "send",
                                                                           "evalue", "bitscore")) %>%
   separate_wider_delim("sseqid", "|", names = c("tr", "entry", "entry_name")) %>%
-  select(-tr) %>%
-  filter(pident >= 70)
+  select(-c(tr, entry_name)) %>%
+  separate_wider_regex("qseqid", c(contig = ".*", "_", num_on_contig = ".*")) %>%
+  filter(pident >= 70) %>%
+  left_join(ref, by = "entry")
+
+rm(ref)
 
 ```
 
+
+Get depth by sample - read in rpkm file and join to ref+annotation df
+```{r}
+get_depth_by_sample <- function(sample){
+  depth_file <- paste0("./results/pileup/", sample, "/", sample, ".rpkm.txt")
+  depth <- read.table(depth_file, comment.char = "#", 
+                         col.names = c("contig", "length", "bases", "coverage", "reads", "rpkm", "frags", "fpkm")) %>%
+    select(-c(length, bases, frags, fpkm))
+  df_with_depth <- left_join(df, depth, by = "contig")
+  return(df_with_depth)
+}
+
+
+depth_list_all <- lapply(setNames(sample_dates$sample, sample_dates$sample), get_depth_by_sample)
+
+saveRDS(depth_list_all, "./notebooks/data_files/depth_list_all.RDS")
+
+```
+
+
+Summarise depth by organism and protein name
 ```{r}
 
-count_table <- df %>%
-  count(entry) %>%
-  left_join(ref, by = "entry")
+get_depth_summarized <- function(depth_list){
+  df_summary <- depth_list %>%
+    group_by(organism, protein_names) %>%
+    summarise(sum_rpkm = sum(rpkm))
+  return(df_summary)
+}
 
-count_table %>%
-  filter(str_detect(organism, "(?i)accumulibacter|competibacter"))
+depth_list_summary <- lapply(depth_list_all, get_depth_summarized)
+names(depth_list_summary) <- sample_dates$sample
+
+saveRDS(depth_list_summary, "./notebooks/data_files/depth_list_summary.RDS")
+
+
+```
+
+
+Separate to relevant PAO and GAO
+```{r}
+get_depth_pao_gao <- function(depth_list){
+  df_summary <- depth_list %>%
+    filter(str_detect(organism, "(?i)accumulibacter|competibacter|tetrasphaera|dechloromonas phosphorivorans|dechloromonas phosphoritropha|phosphoribacter"))
+  return(df_summary)
+}
+
+depth_list_pao_gao <- lapply(depth_list_summary, get_depth_pao_gao)
+names(depth_list_pao_gao) <- sample_dates$sample
+
+```
+
+
+Return a single df and delete preceeding files
+```{r}
+depth_pao_gao <- bind_rows(depth_list_pao_gao, .id = "sample")
+
+rm(depth_list_all, depth_list_summary, df)
+
+```
+
+Cleaning
+saved this to an excel file for manual review
+```{r}
+depth_pao_gao_clean <- depth_pao_gao %>%
+  mutate(organism_clean = case_when(str_detect(organism, "(?i)accumulibacter") ~ "Accumulibacter",
+                                    str_detect(organism, "(?i)competibacter") ~ "Competibacter",
+                                    str_detect(organism, "(?i)tetrasphaera") ~ "Tetrasphaera",
+                                    str_detect(organism, "(?i)dechloromonas") ~ "Dechloromonas",
+                                    str_detect(organism, "(?i)phosphoribacter") ~ "Phosphoribacter")) %>%
+  group_by(sample, protein_names, organism_clean) %>%
+  summarise(sum_rpkm = sum(sum_rpkm)) %>%
+  pivot_wider(names_from = "sample", values_from = sum_rpkm)
+
 
 ```
 
