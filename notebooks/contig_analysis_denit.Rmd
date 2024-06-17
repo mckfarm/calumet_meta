@@ -131,44 +131,47 @@ depth_pao_gao_clean <- depth_pao_gao %>%
   summarise(sum_rpkm = sum(sum_rpkm)) %>%
   left_join(sample_dates, by = "sample")
 
-
+saveRDS(depth_pao_gao_clean, file = "./notebooks/data_files/depth_pao_gao_clean.RDS")
 
 ```
 
 
 ```{r}
-genes_from_manual_review <- paste(sep = "|", 
-                                  "(?i)periplasmic nitrate reductase", "Nitrate reductase subunit beta",
-                                  "EC 1.7.2.1", "Nitrite/sulfite reductase",
-                                  "Nitric-oxide reductase large subunit", "Nitric oxide reductase subunit B", "EC 1.7.2.5", 
-                                  "EC 1.7.2.4")
+# genes_from_manual_review <- paste(sep = "|", 
+#                                   "(?i)periplasmic nitrate reductase", "Nitrate reductase subunit beta",
+#                                   "EC 1.7.2.1", "Nitrite/sulfite reductase",
+#                                   "Nitric-oxide reductase large subunit", "Nitric oxide reductase subunit B", "EC 1.7.2.5", 
+#                                   "EC 1.7.2.4")
+# 
+# 
+# depth_pao_gao_for_heatmap <- depth_pao_gao_clean %>%
+#   filter(str_detect(protein_names, genes_from_manual_review)) %>%
+#   mutate(protein_names_clean = case_when(str_detect(protein_names, "(?i)periplasmic nitrate reductase") ~ "Periplasmic nitrate reductase - NapB",
+#                                          str_detect(protein_names, "(?i)nitrate reductase subunit beta") ~ "Respiratory nitrate reductase subunit beta - NarH",
+#                                          str_detect(protein_names, "(?i)EC 1.7.2.1") ~ "Copper-containing nitrite reductase - NirK",
+#                                          str_detect(protein_names, "(?i)Nitrite/sulfite reductase") ~ "Cytochrome-c-containing nitrite reductase - NirS",
+#                                          str_detect(protein_names, "(?i)Nitric-oxide reductase large subunit|Nitric oxide reductase subunit B") ~ "Nitric oxide reductase subunit B - NorB",
+#                                          str_detect(protein_names, "(?i)EC 1.7.2.5") ~ "Nitric oxide reductase subunit C - NorC",
+#                                          str_detect(protein_names, "(?i)EC 1.7.2.4") ~ "Nitrous oxide reductase - NosZ"
+#                                          )) %>%
+#   filter(sum_rpkm > 0) %>%
+#   mutate(group = case_when(str_detect(protein_names_clean, "NapB|NarH") ~ "Nitrate",
+#                            str_detect(protein_names_clean, "Nir") ~ "Nitrite",
+#                            str_detect(protein_names_clean, "Nor") ~ "Nitric oxide",
+#                            str_detect(protein_names_clean, "Nos") ~ "Nitrous oxide")) %>%
+#   mutate(group = factor(group, levels = c("Nitrate", "Nitrite", "Nitric oxide", "Nitrous oxide"))) %>%
+#   mutate(organism_clean = factor(organism_clean, levels = c("Accumulibacter", "Dechloromonas", "Phosphoribacter", "Tetrasphaera", "Competibacter")))
+# 
+# saveRDS(depth_pao_gao_for_heatmap, file = "./notebooks/data_files/depth_pao_gao_for_heatmap.RDS")
 
-
-depth_pao_gao_for_heatmap <- depth_pao_gao_clean %>%
-  filter(str_detect(protein_names, genes_from_manual_review)) %>%
-  mutate(protein_names_clean = case_when(str_detect(protein_names, "(?i)periplasmic nitrate reductase") ~ "Periplasmic nitrate reductase - NapB",
-                                         str_detect(protein_names, "(?i)nitrate reductase subunit beta") ~ "Respiratory nitrate reductase subunit beta - NarH",
-                                         str_detect(protein_names, "(?i)EC 1.7.2.1") ~ "Copper-containing nitrite reductase - NirK",
-                                         str_detect(protein_names, "(?i)Nitrite/sulfite reductase") ~ "Cytochrome-c-containing nitrite reductase - NirS",
-                                         str_detect(protein_names, "(?i)Nitric-oxide reductase large subunit|Nitric oxide reductase subunit B") ~ "Nitric ocide reductase subunit B - NorB",
-                                         str_detect(protein_names, "(?i)EC 1.7.2.5") ~ "Nitric oxide reductase subunit C - NorC",
-                                         str_detect(protein_names, "(?i)EC 1.7.2.4") ~ "Nitrous oxide reductase - NosZ"
-                                         )) %>%
-  filter(sum_rpkm > 0) %>%
-  mutate(group = case_when(str_detect(protein_names_clean, "NapB|NarH") ~ "Nitrate",
-                           str_detect(protein_names_clean, "Nir") ~ "Nitrite",
-                           str_detect(protein_names_clean, "Nor") ~ "Nitric oxide",
-                           str_detect(protein_names_clean, "Nos") ~ "Nitrous oxide")) %>%
-  mutate(group = factor(group, levels = c("Nitrate", "Nitrite", "Nitric oxide", "Nitrous oxide"))) %>%
-  mutate(organism_clean = factor(organism_clean, levels = c("Accumulibacter", "Dechloromonas", "Phosphoribacter", "Tetrasphaera", "Competibacter")))
-
-saveRDS(depth_pao_gao_for_heatmap, file = "./notebooks/data_files/depth_pao_gao_for_heatmap.RDS")
   
 ```
 
+
+
 heatmap
 ```{r}
-depth_pao_gao_for_heatmap <- readRDS(file = "./notebooks/data_files/depth_pao_gao_for_heatmap.RDS")
+# depth_pao_gao_for_heatmap <- readRDS(file = "./notebooks/data_files/depth_pao_gao_for_heatmap.RDS")
 
 my_breaks <- c(0.1, 0.3, 1, 3, 9)
 
@@ -177,17 +180,15 @@ ggplot(depth_pao_gao_for_heatmap, aes(x = ave_carb, y = protein_names_clean, fil
   facet_grid(group ~ organism_clean, scales = "free") +
   scale_fill_distiller(palette = "YlOrRd", direction = 1, name = "RPKM", trans = "log", breaks = my_breaks) +
   theme_classic() +
-  theme(strip.text.x = element_text(face = "italic"), 
-        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) + 
   labs(x = "", y = "")
   
-ggsave(file.path("~/OneDrive - Northwestern University/Project folders/S2EBPR metagenomics/calumet2021/figures/denit_heatmap.png"), width = 10, height = 5, units = "in", dpi = 320)
+
   
 ```
 
 
 
-# Manual review for heatmap
+Manual review for heatmap
 ```{r}
 
 depth_pao_gao_clean %>%

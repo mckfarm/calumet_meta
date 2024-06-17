@@ -1,0 +1,159 @@
+Packages
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(readxl)
+```
+
+
+Sample data frame
+```{r}
+sample_dates <- data.frame(sample = c("CAL_S2", "CAL1", "CAL2", "CAL3"),
+                           date = c(ymd("2021-11-15"), ymd("2021-08-16"), ymd("2021-09-21"), ymd("2021-10-26")),
+                           phase = c("IV", "III", "IV", "IV"),
+                           ave_carb = c("IV (0.29)", "III (0)", "IV (0.75)", "IV (0.47)"))
+sample_dates$ave_carb <- factor(sample_dates$ave_carb, levels = c("III (0)", "IV (0.75)", "IV (0.47)", "IV (0.29)"))
+
+```
+
+read in data
+```{r}
+depth_pao_gao_clean <- read_xlsx("~/OneDrive - Northwestern University/Project folders/S2EBPR metagenomics/calumet2021/data/gene_abundances.xlsx", sheet = "parsed") %>%
+  filter(!is.na(protein_clean)) %>%
+  mutate(group = case_when(str_detect(protein_clean, "(?i)nitrate") ~ "Nitrate",
+                           str_detect(protein_clean, "(?i)nitrite") ~ "Nitrite",
+                           str_detect(protein_clean, "(?i)nitric oxide") ~ "Nitric oxide",
+                           str_detect(protein_clean, "(?i)nitrous oxide") ~ "Nitrous oxide")) %>%
+  mutate(group = factor(group, levels = c("Nitrate", "Nitrite", "Nitric oxide", "Nitrous oxide"))) %>%
+  pivot_longer(cols = c("CAL_S2", "CAL1", "CAL2", "CAL3"), names_to = "sample", values_to = "sum_rpkm") %>%
+  left_join(sample_dates, by = "sample") %>%
+  group_by(sample, group, ave_carb, protein_clean, organism_clean) %>%
+  summarise(sum_rpkm = sum(sum_rpkm)) %>%
+  filter(sum_rpkm > 0)
+```
+
+
+heatmap
+```{r}
+my_breaks <- c(0.1, 0.3, 1, 3, 9, 27)
+
+ggplot(depth_pao_gao_clean , aes(x = ave_carb, y = protein_clean, fill = sum_rpkm)) +
+  geom_tile() +
+  facet_grid(group ~ organism_clean, scales = "free") +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1, name = "RPKM", trans = "log", breaks = my_breaks)  +
+  theme_classic() +
+  theme(strip.text.x = element_text(face = "italic"), 
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  labs(x = "", y = "")
+  
+ggsave(file.path("~/OneDrive - Northwestern University/Project folders/S2EBPR metagenomics/calumet2021/figures/denit_heatmap.png"), width = 10, height = 5, units = "in", dpi = 320)
+  
+```
+
+
+
+# Manual review for heatmap
+```{r}
+
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)periplasmic nitrate reductase")) %>%
+  filter(organism_clean == "Dechloromonas") %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") +
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Periplasmic nitrate reductase - NapB") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)Nitrate reductase subunit beta")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") + 
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Respiratory nitrate reductase subunit beta - NarH") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+
+
+
+```
+
+
+```{r}
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)EC 1.7.2.1")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") +
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Copper-containing nitrite reductase - NirK") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)Nitrite/sulfite reductase")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") + 
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Cytochrome-c-containing nitrite/sulfite reductase - NirS") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+
+```
+
+
+```{r}
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)Nitric-oxide reductase large subunit|Nitric oxide reductase subunit B|Nitric oxide reductase subunit C (EC 1.7.2.5)")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") +
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Nitric oxide reductase - NorB/C") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "nitric oxide dioxygenase")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") +
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Nitric oxide dioxygenase - Nod") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+```
+
+
+```{r}
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)NosD|NosL")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") +
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Nitrous oxide reductase - NosD/L") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)EC 1.7.2.4")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") +
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Nitrous oxide reductase - NosZ") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+```
+
