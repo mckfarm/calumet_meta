@@ -11,7 +11,9 @@ Sample data frame
 ```{r}
 sample_dates <- data.frame(sample = c("CAL_S2", "CAL1", "CAL2", "CAL3"),
                            date = c(ymd("2021-11-15"), ymd("2021-08-16"), ymd("2021-09-21"), ymd("2021-10-26")),
-                           phase = c("IV", "III", "IV", "IV"))
+                           phase = c("IV", "III", "IV", "IV"),
+                           ave_carb = c("IV (0.29)", "III (0)", "IV (0.75)", "IV (0.47)"))
+sample_dates$ave_carb <- factor(sample_dates$ave_carb, levels = c("III (0)", "IV (0.75)", "IV (0.47)", "IV (0.29)"))
 
 ```
 
@@ -52,19 +54,20 @@ depth_list_all <- lapply(setNames(sample_dates$sample, sample_dates$sample), get
 
 saveRDS(depth_list_all, "./notebooks/data_files/depth_list_all_glycerol.RDS")
 
-```
-
-Return a single df and delete preceeding files
-```{r}
+# Return a single df and delete preceding files
 depth_all <- bind_rows(depth_list_all, .id = "sample")
 
 rm(depth_list_all, df)
 
 ```
 
+
 Cleaning
-saved this to an excel file for manual review
 ```{r}
+depth_list_all <- readRDS("./notebooks/data_files/depth_list_all_glycerol.RDS")
+depth_all <- bind_rows(depth_list_all, .id = "sample")
+rm(depth_list_all, df)
+
 glycerokinase <- depth_all %>%
   filter(str_detect(protein_names, "EC 2.7.1.30")) %>%
   group_by(sample, organism) %>%
@@ -74,20 +77,25 @@ glycerokinase <- depth_all %>%
 
 ```{r}
 glycerokinase %>%
-  filter(str_detect(organism, "(?i)accumulibacter|phosphoribacter|dechloromonas|competibacter|tetrasphaera|defluviicoccus")) %>%
+  filter(str_detect(organism, "(?i)accumulibacter|phosphoribacter|dechloromonas|competibacter|tetrasphaera")) %>%
   mutate(organism_clean = case_when(str_detect(organism, "(?i)accumulibacter") ~ "Accumulibacter",
                                     str_detect(organism, "(?i)competibacter") ~ "Competibacter",
                                     str_detect(organism, "(?i)tetrasphaera") ~ "Tetrasphaera",
                                     str_detect(organism, "(?i)dechloromonas") ~ "Dechloromonas",
-                                    str_detect(organism, "(?i)phosphoribacter") ~ "Phosphoribacter",
-                                    str_detect(organism, "(?i)defluviicoccus") ~ "Defluviicoccus")) %>%
-  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
-  facet_wrap(~organism_clean) +
+                                    str_detect(organism, "(?i)phosphoribacter") ~ "Phosphoribacter")) %>%
+  mutate(organism_clean = factor(organism_clean, 
+                                 levels = c("Accumulibacter", "Dechloromonas", "Phosphoribacter", "Tetrasphaera", "Competibacter"))) %>%
+  ggplot(., aes( x = ave_carb, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean, scales = "free") +
   geom_bar(stat = "identity") +
   theme_classic() +
-  scale_fill_manual(values = c("grey", "lemonchiffon2")) +
-  labs(x = "Date", y = "Glycerol kinase abundance [RPKM]") +
-  scale_x_date(breaks="1 months", date_labels="%b")
+  ylim(0, 8) + 
+  scale_fill_manual(values = c("grey", "lightgoldenrod")) +
+  labs(x = "", y = "Glycerol kinase abundance [RPKM]") +
+  theme(legend.position = "none", strip.text = element_text(face = "italic"), 
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
 
+ggsave(file.path("~/OneDrive - Northwestern University/Project folders/S2EBPR metagenomics/calumet2021/figures/glycerol_bar.png"), width = 7, height = 4, units = "in", dpi = 320)
+  
 ```
 
