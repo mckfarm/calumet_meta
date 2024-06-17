@@ -1,0 +1,294 @@
+Packages
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(data.table)
+library(dtplyr)
+library(patchwork)
+```
+
+
+Sample data frame
+```{r}
+sample_dates <- data.frame(sample = c("CAL_S2", "CAL1", "CAL2", "CAL3"),
+                           date = c(ymd("2021-11-15"), ymd("2021-08-16"), ymd("2021-09-21"), ymd("2021-10-26")),
+                           phase = c("IV", "III", "IV", "IV"),
+                           ave_carb = c("IV (0.29)", "III (0)", "IV (0.75)", "IV (0.47)"))
+sample_dates$ave_carb <- factor(sample_dates$ave_carb, levels = c("III (0)", "IV (0.75)", "IV (0.47)", "IV (0.29)"))
+
+# get_filenames <- function(samples){
+#   name <- paste0("./results/pileup/", samples, "/", samples, ".rpkm.txt")
+#   return(name)
+# }
+# 
+# depth_files <- lapply(sample_dates$sample, get_filenames)
+
+```
+
+Reference file and annotations
+```{r}
+ref <- fread("/projects/b1052/mckenna/resources/diamond/denit_uniprotkb.tsv", sep = "\t")
+colnames(ref) <- c("entry", "entry_name", "protein_names", "gene_names", "organism", "gene_length", "reviewed")
+ref <- ref %>%
+  select(-reviewed)
+
+df <- fread("./results/diamond_contigs/uniref90_denit.tsv", col.names = c("qseqid", "sseqid", "pident", "length", "mismatch",
+                                                                          "gapopen", "qstart", "qend", "sstart", "send",
+                                                                          "evalue", "bitscore")) %>%
+  separate_wider_delim("sseqid", "|", names = c("tr", "entry", "entry_name")) %>%
+  select(-c(tr, entry_name)) %>%
+  separate_wider_regex("qseqid", c(contig = ".*", "_", num_on_contig = ".*")) %>%
+  filter(pident >= 70) %>%
+  left_join(ref, by = "entry")
+
+rm(ref)
+
+```
+
+
+Get depth by sample - read in rpkm file and join to ref+annotation df
+```{r}
+get_depth_by_sample <- function(sample){
+  depth_file <- paste0("./results/pileup/", sample, "/", sample, ".rpkm.txt")
+  depth <- read.table(depth_file, comment.char = "#", 
+                         col.names = c("contig", "length", "bases", "coverage", "reads", "rpkm", "frags", "fpkm")) %>%
+    select(-c(length, bases, frags, fpkm))
+  df_with_depth <- left_join(df, depth, by = "contig")
+  return(df_with_depth)
+}
+
+
+depth_list_all <- lapply(setNames(sample_dates$sample, sample_dates$sample), get_depth_by_sample)
+
+saveRDS(depth_list_all, "./notebooks/data_files/depth_list_all_denit.RDS")
+
+```
+
+
+Summarise depth by organism and protein name
+```{r}
+
+get_depth_summarized <- function(depth_list){
+  df_summary <- depth_list %>%
+    group_by(organism, protein_names) %>%
+    summarise(sum_rpkm = sum(rpkm))
+  return(df_summary)
+}
+
+depth_list_summary <- lapply(depth_list_all, get_depth_summarized)
+names(depth_list_summary) <- sample_dates$sample
+
+saveRDS(depth_list_summary, "./notebooks/data_files/depth_list_summary.RDS")
+
+
+```
+
+
+Separate to relevant PAO and GAO
+```{r}
+get_depth_pao_gao <- function(depth_list){
+  df_summary <- depth_list %>%
+    filter(str_detect(organism, "(?i)accumulibacter|competibacter|tetrasphaera|dechloromonas phosphorivorans|dechloromonas phosphoritropha|phosphoribacter"))
+  return(df_summary)
+}
+
+depth_list_pao_gao <- lapply(depth_list_summary, get_depth_pao_gao)
+names(depth_list_pao_gao) <- sample_dates$sample
+
+```
+
+
+Return a single df and delete preceding files
+```{r}
+depth_pao_gao <- bind_rows(depth_list_pao_gao, .id = "sample")
+
+rm(depth_list_all, depth_list_summary, df)
+
+```
+
+Cleaning
+
+```{r}
+## saved this to an excel file for manual review
+
+# depth_pao_gao_clean <- depth_pao_gao %>%
+#   mutate(organism_clean = case_when(str_detect(organism, "(?i)accumulibacter") ~ "Accumulibacter",
+#                                     str_detect(organism, "(?i)competibacter") ~ "Competibacter",
+#                                     str_detect(organism, "(?i)tetrasphaera") ~ "Tetrasphaera",
+#                                     str_detect(organism, "(?i)dechloromonas") ~ "Dechloromonas",
+#                                     str_detect(organism, "(?i)phosphoribacter") ~ "Phosphoribacter")) %>%
+#   group_by(sample, protein_names, organism_clean) %>%
+#   summarise(sum_rpkm = sum(sum_rpkm)) %>%
+#   pivot_wider(names_from = "sample", values_from = sum_rpkm)
+
+depth_pao_gao_clean <- depth_pao_gao %>%
+  mutate(organism_clean = case_when(str_detect(organism, "(?i)accumulibacter") ~ "Accumulibacter",
+                                    str_detect(organism, "(?i)competibacter") ~ "Competibacter",
+                                    str_detect(organism, "(?i)tetrasphaera") ~ "Tetrasphaera",
+                                    str_detect(organism, "(?i)dechloromonas") ~ "Dechloromonas",
+                                    str_detect(organism, "(?i)phosphoribacter") ~ "Phosphoribacter")) %>%
+  group_by(sample, protein_names, organism_clean) %>%
+  summarise(sum_rpkm = sum(sum_rpkm)) %>%
+  left_join(sample_dates, by = "sample")
+
+
+
+```
+
+
+```{r}
+genes_from_manual_review <- paste(sep = "|", 
+                                  "(?i)periplasmic nitrate reductase", "Nitrate reductase subunit beta",
+                                  "EC 1.7.2.1", "Nitrite/sulfite reductase",
+                                  "Nitric-oxide reductase large subunit", "Nitric oxide reductase subunit B", "EC 1.7.2.5", 
+                                  "EC 1.7.2.4")
+
+
+depth_pao_gao_for_heatmap <- depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, genes_from_manual_review)) %>%
+  mutate(protein_names_clean = case_when(str_detect(protein_names, "(?i)periplasmic nitrate reductase") ~ "Periplasmic nitrate reductase - NapB",
+                                         str_detect(protein_names, "(?i)nitrate reductase subunit beta") ~ "Respiratory nitrate reductase subunit beta - NarH",
+                                         str_detect(protein_names, "(?i)EC 1.7.2.1") ~ "Copper-containing nitrite reductase - NirK",
+                                         str_detect(protein_names, "(?i)Nitrite/sulfite reductase") ~ "Cytochrome-c-containing nitrite reductase - NirS",
+                                         str_detect(protein_names, "(?i)Nitric-oxide reductase large subunit|Nitric oxide reductase subunit B") ~ "Nitric ocide reductase subunit B - NorB",
+                                         str_detect(protein_names, "(?i)EC 1.7.2.5") ~ "Nitric oxide reductase subunit C - NorC",
+                                         str_detect(protein_names, "(?i)EC 1.7.2.4") ~ "Nitrous oxide reductase - NosZ"
+                                         )) %>%
+  filter(sum_rpkm > 0) %>%
+  mutate(group = case_when(str_detect(protein_names_clean, "NapB|NarH") ~ "Nitrate",
+                           str_detect(protein_names_clean, "Nir") ~ "Nitrite",
+                           str_detect(protein_names_clean, "Nor") ~ "Nitric oxide",
+                           str_detect(protein_names_clean, "Nos") ~ "Nitrous oxide")) %>%
+  mutate(group = factor(group, levels = c("Nitrate", "Nitrite", "Nitric oxide", "Nitrous oxide"))) %>%
+  mutate(organism_clean = factor(organism_clean, levels = c("Accumulibacter", "Dechloromonas", "Phosphoribacter", "Tetrasphaera", "Competibacter")))
+
+saveRDS(depth_pao_gao_for_heatmap, file = "./notebooks/data_files/depth_pao_gao_for_heatmap.RDS")
+  
+```
+
+heatmap
+```{r}
+depth_pao_gao_for_heatmap <- readRDS(file = "./notebooks/data_files/depth_pao_gao_for_heatmap.RDS")
+
+my_breaks <- c(0.1, 0.3, 1, 3, 9)
+
+ggplot(depth_pao_gao_for_heatmap, aes(x = ave_carb, y = protein_names_clean, fill = sum_rpkm)) +
+  geom_tile() +
+  facet_grid(group ~ organism_clean, scales = "free") +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1, name = "RPKM", trans = "log", breaks = my_breaks) +
+  theme_classic() +
+  theme(strip.text.x = element_text(face = "italic"), 
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  labs(x = "", y = "")
+  
+ggsave(file.path("~/OneDrive - Northwestern University/Project folders/S2EBPR metagenomics/calumet2021/figures/denit_heatmap.png"), width = 10, height = 5, units = "in", dpi = 320)
+  
+```
+
+
+
+# Manual review for heatmap
+```{r}
+
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)periplasmic nitrate reductase")) %>%
+  filter(organism_clean == "Dechloromonas") %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") +
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Periplasmic nitrate reductase - NapB") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)Nitrate reductase subunit beta")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") + 
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Respiratory nitrate reductase subunit beta - NarH") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+
+
+
+```
+
+
+```{r}
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)EC 1.7.2.1")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") +
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Copper-containing nitrite reductase - NirK") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)Nitrite/sulfite reductase")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") + 
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Cytochrome-c-containing nitrite/sulfite reductase - NirS") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+
+```
+
+
+```{r}
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)Nitric-oxide reductase large subunit|Nitric oxide reductase subunit B|Nitric oxide reductase subunit C (EC 1.7.2.5)")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") +
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Nitric oxide reductase - NorB/C") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "nitric oxide dioxygenase")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") +
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Nitric oxide dioxygenase - Nod") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+```
+
+
+```{r}
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)NosD|NosL")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") +
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Nitrous oxide reductase - NosD/L") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+
+depth_pao_gao_clean %>%
+  filter(str_detect(protein_names, "(?i)EC 1.7.2.4")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2"), name = "Phase") +
+  labs(x = "Date", y = "Gene abundance [RPKM]", title = "Nitrous oxide reductase - NosZ") +
+  scale_x_date(breaks="1 months", date_labels="%b")
+
+```
+

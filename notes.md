@@ -1,3 +1,12 @@
+6/16/24
+uniprotkb contig analysis notebook
+save data outputs to onedrive, set data_files as a gitignore folder
+make summary excel doc
+pick a few genes of interest
+also pick out other denitrifiers for comparison?
+
+ran notebook on analytics node
+
 6/9/24
 cross check uniref90 annotations against db 
 

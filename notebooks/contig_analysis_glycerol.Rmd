@@ -1,6 +1,6 @@
 Packages
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 library(tidyverse)
 library(data.table)
 library(dtplyr)
@@ -11,25 +11,18 @@ Sample data frame
 ```{r}
 sample_dates <- data.frame(sample = c("CAL_S2", "CAL1", "CAL2", "CAL3"),
                            date = c(ymd("2021-11-15"), ymd("2021-08-16"), ymd("2021-09-21"), ymd("2021-10-26")),
-                           phase = c("IV", "II", "III", "III"))
-
-# get_filenames <- function(samples){
-#   name <- paste0("./results/pileup/", samples, "/", samples, ".rpkm.txt")
-#   return(name)
-# }
-# 
-# depth_files <- lapply(sample_dates$sample, get_filenames)
+                           phase = c("IV", "III", "IV", "IV"))
 
 ```
 
 Reference file and annotations
 ```{r}
-ref <- fread("/projects/b1052/mckenna/resources/diamond/denit_uniprotkb.tsv", sep = "\t")
+ref <- fread("/projects/b1052/mckenna/resources/diamond/glycerol_kinase_uniprotkb.tsv", sep = "\t")
 colnames(ref) <- c("entry", "entry_name", "protein_names", "gene_names", "organism", "gene_length", "reviewed")
 ref <- ref %>%
   select(-reviewed)
 
-df <- fread("./results/diamond_contigs/uniref90_denit.tsv", col.names = c("qseqid", "sseqid", "pident", "length", "mismatch",
+df <- fread("./results/diamond_contigs/uniprot_glycerol.tsv", col.names = c("qseqid", "sseqid", "pident", "length", "mismatch",
                                                                           "gapopen", "qstart", "qend", "sstart", "send",
                                                                           "evalue", "bitscore")) %>%
   separate_wider_delim("sseqid", "|", names = c("tr", "entry", "entry_name")) %>%
@@ -57,65 +50,44 @@ get_depth_by_sample <- function(sample){
 
 depth_list_all <- lapply(setNames(sample_dates$sample, sample_dates$sample), get_depth_by_sample)
 
-saveRDS(depth_list_all, "./notebooks/data_files/depth_list_all.RDS")
+saveRDS(depth_list_all, "./notebooks/data_files/depth_list_all_glycerol.RDS")
 
 ```
-
-
-Summarise depth by organism and protein name
-```{r}
-
-get_depth_summarized <- function(depth_list){
-  df_summary <- depth_list %>%
-    group_by(organism, protein_names) %>%
-    summarise(sum_rpkm = sum(rpkm))
-  return(df_summary)
-}
-
-depth_list_summary <- lapply(depth_list_all, get_depth_summarized)
-names(depth_list_summary) <- sample_dates$sample
-
-saveRDS(depth_list_summary, "./notebooks/data_files/depth_list_summary.RDS")
-
-
-```
-
-
-Separate to relevant PAO and GAO
-```{r}
-get_depth_pao_gao <- function(depth_list){
-  df_summary <- depth_list %>%
-    filter(str_detect(organism, "(?i)accumulibacter|competibacter|tetrasphaera|dechloromonas phosphorivorans|dechloromonas phosphoritropha|phosphoribacter"))
-  return(df_summary)
-}
-
-depth_list_pao_gao <- lapply(depth_list_summary, get_depth_pao_gao)
-names(depth_list_pao_gao) <- sample_dates$sample
-
-```
-
 
 Return a single df and delete preceeding files
 ```{r}
-depth_pao_gao <- bind_rows(depth_list_pao_gao, .id = "sample")
+depth_all <- bind_rows(depth_list_all, .id = "sample")
 
-rm(depth_list_all, depth_list_summary, df)
+rm(depth_list_all, df)
 
 ```
 
 Cleaning
 saved this to an excel file for manual review
 ```{r}
-depth_pao_gao_clean <- depth_pao_gao %>%
+glycerokinase <- depth_all %>%
+  filter(str_detect(protein_names, "EC 2.7.1.30")) %>%
+  group_by(sample, organism) %>%
+  summarise(sum_rpkm = sum(rpkm)) %>%
+  left_join(sample_dates, by = "sample")
+```
+
+```{r}
+glycerokinase %>%
+  filter(str_detect(organism, "(?i)accumulibacter|phosphoribacter|dechloromonas|competibacter|tetrasphaera|defluviicoccus")) %>%
   mutate(organism_clean = case_when(str_detect(organism, "(?i)accumulibacter") ~ "Accumulibacter",
                                     str_detect(organism, "(?i)competibacter") ~ "Competibacter",
                                     str_detect(organism, "(?i)tetrasphaera") ~ "Tetrasphaera",
                                     str_detect(organism, "(?i)dechloromonas") ~ "Dechloromonas",
-                                    str_detect(organism, "(?i)phosphoribacter") ~ "Phosphoribacter")) %>%
-  group_by(sample, protein_names, organism_clean) %>%
-  summarise(sum_rpkm = sum(sum_rpkm)) %>%
-  pivot_wider(names_from = "sample", values_from = sum_rpkm)
-
+                                    str_detect(organism, "(?i)phosphoribacter") ~ "Phosphoribacter",
+                                    str_detect(organism, "(?i)defluviicoccus") ~ "Defluviicoccus")) %>%
+  ggplot(., aes( x = date, y = sum_rpkm, fill = phase)) +
+  facet_wrap(~organism_clean) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  scale_fill_manual(values = c("grey", "lemonchiffon2")) +
+  labs(x = "Date", y = "Glycerol kinase abundance [RPKM]") +
+  scale_x_date(breaks="1 months", date_labels="%b")
 
 ```
 
